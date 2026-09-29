@@ -8,3 +8,4 @@
 # '#' se shuru line ignore hoti hai. Save karte hi website naya mouza dikha degi.
 
 Demo Mouza = demo.geojson
+CHAK NO 175P = CHAK NO 175-P.geojson
