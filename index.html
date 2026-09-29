@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Geo Map - Mouza Viewer</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#14213d">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="lib/leaflet.css">
+<style>
+:root{--nv:#14213d;--nv2:#22335c;--am:#fca311}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;font:14px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--nv)}
+#app{display:flex;flex-direction:column;height:100%}
+#top{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:calc(8px + env(safe-area-inset-top)) 10px 8px;background:var(--nv);z-index:1000}
+#top select,#top input{height:38px;border:0;border-radius:10px;padding:0 10px;font:inherit;background:var(--nv2);color:#fff;min-width:0;outline:0}
+#m{flex:1 1 130px;font-weight:700}#q{flex:2 1 160px}#q::placeholder{color:#9fb0d8}
+#go{height:38px;border:0;border-radius:10px;background:var(--am);color:var(--nv);font-weight:800;padding:0 14px}
+#mw{flex:1;position:relative;min-height:0}#map{position:absolute;inset:0;background:#222}
+#lab{position:absolute;left:0;top:0;z-index:450;pointer-events:none}
+#tools{position:absolute;z-index:800;left:10px;top:10px;display:flex;flex-direction:column;gap:6px}
+#tools button,#tools label{width:42px;height:42px;border:0;border-radius:10px;background:#fff;box-shadow:0 2px 8px #0005;font-size:19px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+#tools .on{background:var(--am)}#in{display:none}
+#pn{position:absolute;z-index:800;left:10px;right:10px;bottom:calc(14px + env(safe-area-inset-bottom));max-width:430px;background:var(--nv);color:#fff;border-radius:14px;padding:10px 12px;display:none;box-shadow:0 4px 16px #0008}
+#pn .big{font-size:24px;font-weight:800;color:var(--am)}#pn .lb{color:#9fb0d8;font-size:12px}
+#pn .bt{display:flex;gap:6px;margin-top:8px}#pn button{flex:1;height:34px;border:0;border-radius:8px;background:var(--nv2);color:#fff;font-weight:700}
+#st{position:absolute;z-index:900;top:10px;left:64px;right:10px;width:max-content;max-width:calc(100% - 74px);background:#000c;color:#fff;padding:7px 13px;border-radius:20px;display:none;font-weight:600}
+.sg{background:#14213dee;color:#ffb703;font:700 11px system-ui;padding:1px 5px;border-radius:6px;width:auto!important;height:auto!important;white-space:nowrap;transform:translate(-50%,-50%)}
+.sm{font-size:12px;color:#555;margin-top:3px}
+</style>
+</head>
+<body>
+<div id="app">
+ <header id="top">
+  <select id="m"><option value="">Mouza select karein…</option></select>
+  <input id="q" placeholder="Lat,Lng ya Killa/Block naam" enterkeyhint="go" autocomplete="off">
+  <button id="go">GO</button>
+ </header>
+ <div id="mw">
+  <div id="map"></div>
+  <div id="tools">
+   <button id="md" title="Distance (feet)">📏</button>
+   <button id="ma" title="Area (sq ft / marla / kanal)">⬚</button>
+   <button id="lc" title="My location">◎</button>
+   <button id="bm" title="Change map">🗺</button>
+   <button id="ft" title="Fit mouza">⤢</button>
+   <label title="Open KML / KMZ / GeoJSON from phone">📂<input id="of" type="file" accept=".kml,.kmz,.geojson,.json" hidden></label>
+   <button id="in" title="Install app">⬇</button>
+  </div>
+  <div id="st"></div>
+  <div id="pn"><div id="pr"></div><div class="bt"><button id="mu">↶ Undo</button><button id="mc">Clear</button><button id="mx">Close</button></div></div>
+ </div>
+</div>
+<script src="lib/leaflet.js"></script>
+<script>
+"use strict";
+const $=q=>document.querySelector(q),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const DATA='data/',FT=3.280839895,R0=6378137,rad=Math.PI/180;
+const map=L.map('map',{zoomControl:false,preferCanvas:true,maxZoom:21}).setView([28.302,70.1285],13);
+map.attributionControl.setPrefix(false);
+const RD=L.canvas({padding:.3});
+
+/* ---------- base maps ---------- */
+let bi=+localStorage.gb||0;
+const BM=[['Satellite','https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',{subdomains:'0123',maxNativeZoom:20,attribution:'© Google'}],
+['Esri Satellite','https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxNativeZoom:19,attribution:'© Esri'}],
+['Streets','https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxNativeZoom:19,attribution:'© OpenStreetMap'}]].map(([n,u,o])=>[n,L.tileLayer(u,{maxZoom:21,...o})]);
+if(bi>=BM.length)bi=0;BM[bi][1].addTo(map);
+$('#bm').onclick=()=>{map.removeLayer(BM[bi][1]);bi=(bi+1)%BM.length;BM[bi][1].addTo(map);localStorage.gb=bi;say(BM[bi][0],1200)};
+
+/* ---------- status ---------- */
+let stT;function say(t,ms){const s=$('#st');s.textContent=t;s.style.display='block';clearTimeout(stT);if(ms)stT=setTimeout(()=>s.style.display='none',ms)}
+
+/* ---------- parsers: KML / GeoJSON -> features {name,desc,polys,lines,pts,line,lab} ---------- */
+const KC=c=>c&&c.length==8?'#'+c.slice(6,8)+c.slice(4,6)+c.slice(2,4):null;
+function parseKML(t){
+ const x=new DOMParser().parseFromString(t,'text/xml'),g=(e,n)=>e.getElementsByTagName(n),tx=(e,n)=>{const a=g(e,n)[0];return a?a.textContent.trim():''};
+ const co=e=>tx(e,'coordinates').split(/\s+/).filter(Boolean).map(s=>{const a=s.split(',');return[+a[0],+a[1]]}).filter(p=>p[0]==p[0]&&p[1]==p[1]);
+ const sty=s=>{const l=g(s,'LineStyle')[0],b=g(s,'LabelStyle')[0];return{l:l&&KC(tx(l,'color')),b:b&&KC(tx(b,'color'))}};
+ const S={};for(const s of g(x,'Style')){const id=s.getAttribute('id');if(id)S[id]=sty(s)}
+ const out=[];
+ for(const p of g(x,'Placemark')){
+  const is=g(p,'Style')[0],s=is?sty(is):S[tx(p,'styleUrl').replace('#','')]||{};
+  const f={name:tx(p,'name')||tx(p,'n'),desc:tx(p,'description'),polys:[],lines:[],pts:[],line:s.l,lab:s.b};
+  for(const pg of g(p,'Polygon')){const r=[];for(const o of g(pg,'outerBoundaryIs'))r.push(co(o));for(const i of g(pg,'innerBoundaryIs'))r.push(co(i));if(r[0]&&r[0].length>2)f.polys.push(r)}
+  for(const l of g(p,'LineString')){const c=co(l);if(c.length>1)f.lines.push(c)}
+  if(!f.polys.length&&!f.lines.length)for(const q of g(p,'Point')){const c=co(q)[0];if(c)f.pts.push(c)}
+  if(f.polys.length||f.lines.length||f.pts.length)out.push(f)}
+ return out}
+const TC={killa:['#7df527','#2efcff'],muraba:['#f40b0b','#f40b0b'],block:['#1e7afc','#1e7afc']};
+function parseGJ(j){
+ const geo=(g,f)=>{if(!g)return;const c=g.coordinates;switch(g.type){case'Polygon':f.polys.push(c);break;case'MultiPolygon':c.forEach(p=>f.polys.push(p));break;case'LineString':f.lines.push(c);break;case'MultiLineString':c.forEach(l=>f.lines.push(l));break;case'Point':f.pts.push(c);break;case'MultiPoint':c.forEach(p=>f.pts.push(p));break;case'GeometryCollection':g.geometries.forEach(h=>geo(h,f))}};
+ const fe=j.type=='FeatureCollection'?j.features:j.type=='Feature'?[j]:[{geometry:j,properties:{}}],out=[];
+ for(const e of fe){const p=e.properties||{},t=TC[p.type];
+  const f={name:String(p.name??p.Name??p.title??''),desc:p.description||'',polys:[],lines:[],pts:[],line:t?t[0]:p.stroke,lab:t?t[1]:p.label};
+  if(p.type=='killa'&&f.name.includes('/'))f.lab='#fcf91e';
+  geo(e.geometry,f);if(f.polys.length||f.lines.length||f.pts.length)out.push(f)}
+ return out}
+
+/* ---------- prepare (bbox, size bucket) ---------- */
+function prep(F){const B=[1e9,1e9,-1e9,-1e9];
+ for(const f of F){let a=1e9,b=1e9,c=-1e9,d=-1e9;const ex=p=>{if(p[0]<a)a=p[0];if(p[0]>c)c=p[0];if(p[1]<b)b=p[1];if(p[1]>d)d=p[1]};
+  f.polys.forEach(r=>r[0].forEach(ex));f.lines.forEach(l=>l.forEach(ex));f.pts.forEach(ex);
+  f.bb=[a,b,c,d];f.cx=(a+c)/2;f.cy=(b+d)/2;f.w=Math.max((c-a)*Math.cos(f.cy*rad),d-b)*111320;
+  f.k=f.polys.length?Math.min(19,Math.max(0,Math.floor(Math.log2(Math.max(f.w,1))))):20;
+  B[0]=Math.min(B[0],a);B[1]=Math.min(B[1],b);B[2]=Math.max(B[2],c);B[3]=Math.max(B[3],d)}
+ return B}
+
+/* ---------- rendering with size-based level of detail (light on mobile) ---------- */
+let cur=null;const HL=L.layerGroup().addTo(map),LL=r=>r.map(p=>[p[1],p[0]]);
+const mpp=()=>156543*Math.cos(map.getCenter().lat*rad)/2**map.getZoom(),vis=k=>k>=20||2**(k+1)>=5*mpp();
+function build(bk){const ly=[];
+ for(const f of bk.f){const o={renderer:RD,interactive:false,color:f.line||'#ef4444',weight:1.5,fill:false};
+  f.polys.forEach(p=>ly.push(L.polygon(p.map(LL),o)));
+  f.lines.forEach(l=>ly.push(L.polyline(LL(l),{...o,color:f.line||'#facc15',weight:3})));
+  f.pts.forEach(p=>ly.push(L.circleMarker([p[1],p[0]],{renderer:RD,radius:7,color:'#fff',weight:2,fillColor:'#10b981',fillOpacity:1,interactive:false})))}
+ bk.g=L.featureGroup(ly)}
+function lod(){if(!cur)return;for(const k in cur.bk){const b=cur.bk[k];if(vis(+k)){if(!b.g)build(b);if(!map.hasLayer(b.g))b.g.addTo(map)}else if(b.g&&map.hasLayer(b.g))map.removeLayer(b.g)}}
+function clearCur(){if(cur)for(const k in cur.bk){const g=cur.bk[k].g;g&&map.removeLayer(g)}HL.clearLayers();map.closePopup();cur=null}
+function show(F,name){clearCur();if(!F.length)return say('Is file me koi feature nahi mila',3500);
+ const bb=prep(F),bk={};for(const f of F)(bk[f.k]=bk[f.k]||{f:[]}).f.push(f);
+ cur={F,bk,name,bb};$('#ft').onclick();lod();labels();say(name+': '+F.length+' features',2500)}
+$('#ft').onclick=()=>{if(cur)map.fitBounds([[cur.bb[1],cur.bb[0]],[cur.bb[3],cur.bb[2]]],{padding:[20,20],maxZoom:18})};
+
+/* ---------- labels (single canvas, only what fits) ---------- */
+const lc=document.createElement('canvas');lc.id='lab';map.getContainer().append(lc);let raf;
+function labels(){cancelAnimationFrame(raf);raf=requestAnimationFrame(()=>{
+ const s=map.getSize(),d=devicePixelRatio||1;lc.width=s.x*d;lc.height=s.y*d;lc.style.width=s.x+'px';lc.style.height=s.y+'px';
+ const g=lc.getContext('2d');g.scale(d,d);if(!cur)return;
+ const b=map.getBounds().pad(.05),m=mpp();g.textAlign='center';g.textBaseline='middle';g.lineJoin='round';g.lineWidth=3;g.strokeStyle='rgba(0,0,0,.85)';let n=0;
+ for(const f of cur.F){if(!f.name)continue;const pt=!f.polys.length,px=f.w/m;if((!pt&&px<36)||!b.contains([f.cy,f.cx]))continue;
+  const p=map.latLngToContainerPoint([f.cy,f.cx]);g.font='700 '+(px<90?12:px<300?15:19)+'px system-ui,sans-serif';g.fillStyle=f.lab||'#2efcff';
+  g.strokeText(f.name,p.x,p.y);g.fillText(f.name,p.x,p.y);if(++n>800)break}})}
+map.on('move zoom resize moveend',labels);
+map.on('zoomstart',()=>lc.style.opacity=0);map.on('zoomend',()=>{lc.style.opacity=1;lod();labels()});
+
+/* ---------- tap = identify (smallest visible polygon under the finger) ---------- */
+function pip(r,x,y){let c=false;for(let i=0,j=r.length-1;i<r.length;j=i++){const a=r[i],b=r[j];if((a[1]>y)!=(b[1]>y)&&x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0])c=!c}return c}
+const hl=f=>{HL.clearLayers();f.polys.forEach(p=>L.polygon(p.map(LL),{color:'#ffb703',weight:3,fillColor:'#ffb703',fillOpacity:.35,interactive:false}).addTo(HL))};
+const area=f=>(f.bb[2]-f.bb[0])*(f.bb[3]-f.bb[1]);
+function ident(ll){if(!cur)return;const x=ll.lng,y=ll.lat;
+ const h=cur.F.filter(f=>f.polys.length&&vis(f.k)&&x>=f.bb[0]&&x<=f.bb[2]&&y>=f.bb[1]&&y<=f.bb[3]&&f.polys.some(p=>pip(p[0],x,y)&&!p.slice(1).some(r=>pip(r,x,y)))).sort((a,b)=>area(a)-area(b));
+ if(!h.length){HL.clearLayers();return}
+ const f=h[0];hl(f);const up=h.slice(1).map(z=>z.name).filter(Boolean).map(esc).join(' › ');
+ L.popup({autoPanPadding:[60,60]}).setLatLng(ll).setContent('<div dir="auto" style="font-weight:800;font-size:16px">تفصیل: '+esc(f.name||'—')+'</div>'+(up?'<div class="sm">'+up+'</div>':'')+(f.desc?'<div class="sm">'+esc(f.desc.replace(/<[^>]+>/g,' ')).slice(0,300)+'</div>':'')+'<div class="sm">'+y.toFixed(6)+', '+x.toFixed(6)+'</div>').openOn(map)}
+map.on('popupclose',()=>HL.clearLayers());
+
+/* ---------- measure (feet / marla / kanal) ---------- */
+let md=null,mp=[];const ML=L.layerGroup().addTo(map);
+const dist=(a,b)=>{const dp=(b.lat-a.lat)*rad,dl=(b.lng-a.lng)*rad,h=Math.sin(dp/2)**2+Math.cos(a.lat*rad)*Math.cos(b.lat*rad)*Math.sin(dl/2)**2;return 2*R0*Math.asin(Math.sqrt(h))};
+function marea(p){const c=Math.cos(p[0].lat*rad),xy=p.map(q=>[(q.lng-p[0].lng)*rad*R0*c,(q.lat-p[0].lat)*rad*R0]);let s=0;for(let i=0;i<xy.length;i++){const j=(i+1)%xy.length;s+=xy[i][0]*xy[j][1]-xy[j][0]*xy[i][1]}return Math.abs(s/2)}
+function mdraw(){ML.clearLayers();const P=$('#pn');$('#md').classList.toggle('on',md=='d');$('#ma').classList.toggle('on',md=='a');
+ if(!md){P.style.display='none';return}P.style.display='block';let tot=0;
+ if(mp.length>1)(md=='a'&&mp.length>2?L.polygon:L.polyline)(mp,{color:'#ffb703',weight:3,dashArray:md=='d'?'6 6':null,fillOpacity:.2,interactive:false}).addTo(ML);
+ const seg=(a,b)=>{const s=dist(a,b);L.marker([(a.lat+b.lat)/2,(a.lng+b.lng)/2],{icon:L.divIcon({className:'sg',html:(s*FT).toFixed(1)+' ft'}),interactive:false}).addTo(ML);return s};
+ mp.forEach((p,i)=>{L.circleMarker(p,{radius:6,color:'#fff',weight:2,fillColor:'#ffb703',fillOpacity:1,interactive:false}).addTo(ML);if(i)tot+=seg(mp[i-1],p)});
+ let h;
+ if(!mp.length)h='<div class="lb">Map par points tap karein</div>';
+ else if(md=='d')h='<div class="lb">Total distance</div><div class="big">'+(tot*FT).toFixed(1)+' ft</div><div class="lb">'+tot.toFixed(1)+' m</div>';
+ else if(mp.length<3)h='<div class="lb">Area ke liye kam az kam 3 points</div>';
+ else{const per=tot+seg(mp[mp.length-1],mp[0]),sq=marea(mp)*FT*FT,ma=sq/272.25;
+  h='<div class="lb">Area</div><div class="big">'+sq.toFixed(0)+' sq ft</div><div>'+ma.toFixed(2)+' Marla · '+(ma/20).toFixed(3)+' Kanal · '+(sq/43560).toFixed(3)+' Acre</div><div class="lb">Perimeter '+(per*FT).toFixed(1)+' ft</div>'}
+ $('#pr').innerHTML=h}
+const mode=m=>{md=md==m?null:m;mp=[];map.closePopup();HL.clearLayers();mdraw()};
+$('#md').onclick=()=>mode('d');$('#ma').onclick=()=>mode('a');
+$('#mu').onclick=()=>{mp.pop();mdraw()};$('#mc').onclick=()=>{mp=[];mdraw()};$('#mx').onclick=()=>{md=null;mp=[];mdraw()};
+map.on('click',e=>{if(md){mp.push(e.latlng);mdraw()}else ident(e.latlng)});
+
+/* ---------- load: fetch / decode ---------- */
+const need=(src,v)=>window[v]?0:new Promise((ok,no)=>{const s=document.createElement('script');s.src=src;s.onload=ok;s.onerror=no;document.head.append(s)});
+async function decode(buf){const u=new Uint8Array(buf);let t;
+ if(u[0]==80&&u[1]==75){await need('lib/jszip.min.js','JSZip');const z=await JSZip.loadAsync(buf),e=z.file('doc.kml')||z.file(/\.kml$/i)[0];if(!e)throw Error('KMZ me KML nahi mili');t=await e.async('string')}
+ else t=new TextDecoder().decode(u);
+ const s=t.trimStart();return s[0]=='<'?parseKML(s):parseGJ(JSON.parse(s))}
+async function get(url){const r=await fetch(url);if(!r.ok)throw Error(r.status);const rd=r.body&&r.body.getReader();if(!rd)return r.arrayBuffer();
+ const ch=[];let n=0;for(;;){const{done,value}=await rd.read();if(done)break;ch.push(value);n+=value.length;say('Downloading '+(n/1048576).toFixed(1)+' MB…')}
+ const o=new Uint8Array(n);let p=0;for(const c of ch){o.set(c,p);p+=c.length}return o.buffer}
+async function openM(m){say('Loading '+m.name+'…');let err;
+ for(const f of m.files){try{const b=await get(DATA+encodeURI(f));say('Reading…');await new Promise(r=>setTimeout(r,30));show(await decode(b),m.name);localStorage.lm=m.name;return}catch(e){err=e}}
+ say('❌ '+m.name+' load nahi hui ('+(err&&err.message||err)+')',5000)}
+$('#of').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{say('Reading '+f.name+'…');show(await decode(await f.arrayBuffer()),f.name)}catch(x){say('❌ File parh nahi saka: '+x.message,5000)}e.target.value=''};
+
+/* ---------- mouza list (mouza-list.txt) ---------- */
+let M=[];const EXT=/\.(geojson|json|kml|kmz)$/i;
+async function list(){let t='';try{const r=await fetch('mouza-list.txt',{cache:'no-cache'});if(r.ok)t=await r.text()}catch(e){}
+ M=t.split(/\r?\n/).map(l=>l.split('#')[0].trim()).filter(Boolean).map(l=>{const[a,b]=l.includes('=')?l.split('=').map(s=>s.trim()):[l,l];return{name:a.replace(EXT,''),files:EXT.test(b)?[b]:['geojson','kml','kmz','json'].map(e=>b+'.'+e)}});
+ $('#m').innerHTML='<option value="">Mouza select karein…</option>'+M.map((m,i)=>'<option value="'+i+'">'+esc(m.name)+'</option>').join('')}
+$('#m').onchange=e=>{const m=M[e.target.value];if(m)openM(m)};
+async function start(){await list();const q=(new URLSearchParams(location.search).get('m')||localStorage.lm||'').toLowerCase(),i=M.findIndex(m=>m.name.toLowerCase()==q);
+ if(i>=0){$('#m').value=i;openM(M[i])}else say(M.length?'Mouza select karein':'mouza-list.txt khali hai',3000)}
+
+/* ---------- search: "lat,lng" or feature name ---------- */
+let si=0,lq='';
+function pin(ll){HL.clearLayers();L.circleMarker(ll,{radius:8,color:'#fff',weight:2,fillColor:'#fca311',fillOpacity:1,interactive:false}).addTo(HL)}
+function go(){const q=$('#q').value.trim();if(!q)return;const m=q.match(/^(-?\d+(?:\.\d+)?)[\s,]+(-?\d+(?:\.\d+)?)$/);
+ if(m){let a=+m[1],b=+m[2];if(Math.abs(a)>50&&Math.abs(b)<50)[a,b]=[b,a];pin([a,b]);map.setView([a,b],18);return}
+ if(!cur)return say('Pehle mouza select karein',2500);const s=q.toLowerCase();
+ let r=cur.F.filter(f=>f.name.toLowerCase()==s);if(!r.length)r=cur.F.filter(f=>f.name.toLowerCase().includes(s));
+ if(!r.length)return say('Nahi mila: '+q,2500);
+ if(q!=lq){si=0;lq=q}else si=(si+1)%r.length;
+ const f=r[si];hl(f);map.fitBounds([[f.bb[1],f.bb[0]],[f.bb[3],f.bb[2]]],{maxZoom:19,padding:[40,40]});say(f.name+'  ('+(si+1)+'/'+r.length+')',2500)}
+$('#go').onclick=go;$('#q').onkeydown=e=>{if(e.key=='Enter')go()};
+
+/* ---------- GPS ---------- */
+let me=null;
+$('#lc').onclick=()=>{if(!navigator.geolocation)return say('GPS support nahi',2000);say('GPS dhoond raha hai…');
+ navigator.geolocation.getCurrentPosition(p=>{const ll=[p.coords.latitude,p.coords.longitude];if(me)map.removeLayer(me);
+  me=L.layerGroup([L.circle(ll,{radius:p.coords.accuracy,weight:1,color:'#3b82f6',fillOpacity:.1,interactive:false}),L.circleMarker(ll,{radius:7,color:'#fff',weight:2,fillColor:'#3b82f6',fillOpacity:1,interactive:false})]).addTo(map);
+  map.setView(ll,Math.max(map.getZoom(),18));say('±'+Math.round(p.coords.accuracy)+' m',2000)},()=>say('GPS nahi mila',2500),{enableHighAccuracy:true,timeout:15000})};
+
+/* ---------- install + offline ---------- */
+let ip;addEventListener('beforeinstallprompt',e=>{e.preventDefault();ip=e;$('#in').style.display='flex'});
+$('#in').onclick=async()=>{ip.prompt();await ip.userChoice;$('#in').style.display='none'};
+if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{});
+ navigator.serviceWorker.addEventListener('message',e=>{if(e.data&&e.data.t=='upd'&&cur){say('🔄 File update hui - reload ke liye yahan tap karein');$('#st').onclick=()=>{$('#st').style.display='none';const m=M.find(x=>x.name==cur.name);m&&openM(m)}}})}
+start();
+</script>
+</body>
+</html>
