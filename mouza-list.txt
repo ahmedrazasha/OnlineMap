@@ -9,3 +9,4 @@
 
 Demo Mouza = demo.geojson
 CHAK NO 175P = CHAK NO 175-P.geojson
+Barthla = Barthla Syed Ahmed.geojson
