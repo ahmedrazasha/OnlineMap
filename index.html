@@ -125,12 +125,13 @@ function show(F,name){clearCur();if(!F.length)return say('Is file me koi feature
 $('#ft').onclick=()=>{if(cur)map.fitBounds([[cur.bb[1],cur.bb[0]],[cur.bb[3],cur.bb[2]]],{padding:[20,20],maxZoom:18})};
 
 /* ---------- labels (single canvas, only what fits) ---------- */
+const NOLAB=/^\s*(start\s*point|muraba\b.*)$/i; /* yeh do naam map par text me nahi dikhte */
 const lc=document.createElement('canvas');lc.id='lab';map.getContainer().append(lc);let raf;
 function labels(){cancelAnimationFrame(raf);raf=requestAnimationFrame(()=>{
  const s=map.getSize(),d=devicePixelRatio||1;lc.width=s.x*d;lc.height=s.y*d;lc.style.width=s.x+'px';lc.style.height=s.y+'px';
  const g=lc.getContext('2d');g.scale(d,d);if(!cur)return;
  const b=map.getBounds().pad(.05),m=mpp();g.textAlign='center';g.textBaseline='middle';g.lineJoin='round';g.lineWidth=3;g.strokeStyle='rgba(0,0,0,.85)';let n=0;
- for(const f of cur.F){if(!f.name)continue;const pt=!f.polys.length,px=f.w/m;if((!pt&&px<36)||!b.contains([f.cy,f.cx]))continue;
+ for(const f of cur.F){if(!f.name||NOLAB.test(f.name))continue;const pt=!f.polys.length,px=f.w/m;if((!pt&&px<36)||!b.contains([f.cy,f.cx]))continue;
   const p=map.latLngToContainerPoint([f.cy,f.cx]);g.font='700 '+(px<90?12:px<300?15:19)+'px system-ui,sans-serif';g.fillStyle=f.lab||'#2efcff';
   g.strokeText(f.name,p.x,p.y);g.fillText(f.name,p.x,p.y);if(++n>800)break}})}
 map.on('move zoom resize moveend',labels);
