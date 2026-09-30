@@ -11,3 +11,4 @@
 175p = CHAK NO 175-P.geojson
 Barthla = Barthla Syed Ahmed.geojson
 Goth Jungo = goth jungo.geojson
+Samdani = Samdani.geojson
