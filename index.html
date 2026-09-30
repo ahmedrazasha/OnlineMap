@@ -28,6 +28,10 @@ html,body{margin:0;height:100%;font:14px system-ui,-apple-system,"Segoe UI",Robo
 #pn .bt{display:flex;gap:6px;margin-top:8px}#pn button{flex:1;height:34px;border:0;border-radius:8px;background:var(--nv2);color:#fff;font-weight:700}
 #st{position:absolute;z-index:900;top:10px;left:64px;right:10px;width:max-content;max-width:calc(100% - 74px);background:#000c;color:#fff;padding:7px 13px;border-radius:20px;display:none;font-weight:600}
 .sg{background:#14213dee;color:#ffb703;font:700 11px system-ui;padding:1px 5px;border-radius:6px;width:auto!important;height:auto!important;white-space:nowrap;transform:translate(-50%,-50%)}
+.me{width:22px;height:22px}.me .ro{position:relative;width:22px;height:22px}
+.me b{position:absolute;inset:3px;border-radius:50%;background:#3b82f6;border:3px solid #fff;box-shadow:0 0 8px #0009}
+.me i{position:absolute;left:5px;top:-9px;border:6px solid transparent;border-bottom:11px solid #3b82f6;border-top:0;display:none}.me.h i{display:block}
+#tools .tk{box-shadow:0 0 0 3px var(--am),0 2px 8px #0005}
 .sm{font-size:12px;color:#555;margin-top:3px}
 </style>
 </head>
@@ -43,7 +47,7 @@ html,body{margin:0;height:100%;font:14px system-ui,-apple-system,"Segoe UI",Robo
   <div id="tools">
    <button id="md" title="Distance (feet)">📏</button>
    <button id="ma" title="Area (sq ft / marla / kanal)">⬚</button>
-   <button id="lc" title="My location">◎</button>
+   <button id="lc" title="Live GPS tracking">◎</button>
    <button id="bm" title="Change map">🗺</button>
    <button id="ft" title="Fit mouza">⤢</button>
    <label title="Open KML / KMZ / GeoJSON from phone">📂<input id="of" type="file" accept=".kml,.kmz,.geojson,.json" hidden></label>
@@ -204,12 +208,24 @@ function go(){const q=$('#q').value.trim();if(!q)return;const m=q.match(/^(-?\d+
  const f=r[si];hl(f);map.fitBounds([[f.bb[1],f.bb[0]],[f.bb[3],f.bb[2]]],{maxZoom:19,padding:[40,40]});say(f.name+'  ('+(si+1)+'/'+r.length+')',2500)}
 $('#go').onclick=go;$('#q').onkeydown=e=>{if(e.key=='Enter')go()};
 
-/* ---------- GPS ---------- */
-let me=null;
-$('#lc').onclick=()=>{if(!navigator.geolocation)return say('GPS support nahi',2000);say('GPS dhoond raha hai…');
- navigator.geolocation.getCurrentPosition(p=>{const ll=[p.coords.latitude,p.coords.longitude];if(me)map.removeLayer(me);
-  me=L.layerGroup([L.circle(ll,{radius:p.coords.accuracy,weight:1,color:'#3b82f6',fillOpacity:.1,interactive:false}),L.circleMarker(ll,{radius:7,color:'#fff',weight:2,fillColor:'#3b82f6',fillOpacity:1,interactive:false})]).addTo(map);
-  map.setView(ll,Math.max(map.getZoom(),18));say('±'+Math.round(p.coords.accuracy)+' m',2000)},()=>say('GPS nahi mila',2500),{enableHighAccuracy:true,timeout:15000})};
+/* ---------- GPS: live tracking (car / walking) ---------- */
+let gw=null,gm=null,gc=null,fol=false,wl=null;
+const gbtn=()=>{const b=$('#lc');b.classList.toggle('on',gw!==null&&fol);b.classList.toggle('tk',gw!==null&&!fol)};
+function gstop(){if(gw!==null)navigator.geolocation.clearWatch(gw);gm&&map.removeLayer(gm);gc&&map.removeLayer(gc);wl&&wl.release&&wl.release().catch(()=>{});gw=gm=gc=wl=null;fol=false;gbtn()}
+function onFix(p){const c=p.coords,ll=[c.latitude,c.longitude],first=!gm;
+ if(first){gc=L.circle(ll,{radius:c.accuracy,weight:1,color:'#3b82f6',fillOpacity:.1,interactive:false}).addTo(map);
+  gm=L.marker(ll,{icon:L.divIcon({className:'',html:'<div class="me"><div class="ro"><i></i><b></b></div></div>',iconSize:[22,22]}),interactive:false,keyboard:false,zIndexOffset:1000}).addTo(map);say('📍 GPS mil gaya (±'+Math.round(c.accuracy)+' m)',2000)}
+ else{gm.setLatLng(ll);gc.setLatLng(ll);gc.setRadius(c.accuracy)}
+ const el=gm.getElement();if(el){const h=c.heading,mv=h!=null&&!isNaN(h)&&(c.speed||0)>.7;el.firstChild.classList.toggle('h',mv);if(mv)el.querySelector('.ro').style.transform='rotate('+h+'deg)'}
+ if(fol){if(first||map.getZoom()<17)map.setView(ll,Math.max(map.getZoom(),17));else map.panTo(ll,{animate:true,duration:.8,easeLinearity:1})}}
+$('#lc').onclick=()=>{
+ if(gw!==null){if(!fol&&gm){fol=true;map.setView(gm.getLatLng(),Math.max(map.getZoom(),17));gbtn()}else{gstop();say('GPS band',1200)}return}
+ if(!navigator.geolocation)return say('GPS support nahi',2500);
+ say('GPS dhoond raha hai…');fol=true;
+ gw=navigator.geolocation.watchPosition(onFix,e=>{say(e.code==1?'❌ GPS permission block hai (browser settings me allow karein)':'GPS signal nahi mil raha…',3500);if(e.code==1)gstop()},{enableHighAccuracy:true,maximumAge:1000,timeout:30000});
+ if(navigator.wakeLock)navigator.wakeLock.request('screen').then(l=>wl=l).catch(()=>{});gbtn()};
+map.on('dragstart',()=>{if(fol){fol=false;gbtn()}});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&gw!==null&&navigator.wakeLock)navigator.wakeLock.request('screen').then(l=>wl=l).catch(()=>{})});
 
 /* ---------- install + offline ---------- */
 let ip;addEventListener('beforeinstallprompt',e=>{e.preventDefault();ip=e;$('#in').style.display='flex'});
