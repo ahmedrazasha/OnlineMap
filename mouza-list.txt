@@ -10,3 +10,4 @@
 234p = 234p.geojson
 CHAK NO 175P = CHAK NO 175-P.geojson
 Barthla = Barthla Syed Ahmed.geojson
+Goth Jungo = goth jungo.geojson
