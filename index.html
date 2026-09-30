@@ -106,14 +106,22 @@ function parseGJ(j){
  return out}
 
 /* ---------- fixed colour pattern for every mouza: killa green, muraba red, block blue ---------- */
-const CL=f=>{const n=f.name||'';return /^\s*block\b/i.test(n)?['#1e7afc',3,'#1e7afc']:/^\s*murab{1,2}a\b/i.test(n)?['#f40b0b',2.2,'#f40b0b']:/^\s*\d+(\s*\/\s*\d+)?\s*$/.test(n)?['#7df527',1.3,n.includes('/')?'#fcf91e':'#2efcff']:null};
+const CL=f=>{const n=f.name||'';return /^\s*block\b/i.test(n)?BLK:/^\s*murab{1,2}a\b/i.test(n)?MUR:/^\s*\d+(\s*\/\s*\d+)?\s*$/.test(n)?KIL:null};
+const KIL=['#7df527',1.3,'#2efcff'],MUR=['#f40b0b',2.2,'#f40b0b'],BLK=['#1e7afc',3,'#1e7afc'];
+/* file me naam/rang kuch bhi ho: grid jaisi file ho to size se killa/muraba/block pehchan lo */
+function geoCls(F){const P=F.filter(f=>f.polys.length&&f.w>0),ar=f=>(f.bb[2]-f.bb[0])*(f.bb[3]-f.bb[1]);if(P.length<12)return;
+ const md=P.map(ar).sort((a,b)=>a-b)[P.length>>1];if(P.filter(f=>ar(f)>=md/2&&ar(f)<=md*2).length<P.length*.5)return;
+ for(const f of P)if(!f.cc){const a=ar(f);f.cc=a<md*6?KIL:a<md*60?MUR:BLK;f.lab=f.cc==KIL&&f.name.includes('/')?'#fcf91e':f.cc[2]}}
+/* har edge sirf aik dafa draw ho (shared edge double na bane) */
+const kq=p=>Math.round(p[0]*1e6)+','+Math.round(p[1]*1e6);
+function ue(f,S){const o=[];for(const pg of f.polys)for(const r of pg)for(let i=0;i<r.length;i++){const u=r[i],v=r[(i+1)%r.length],a=kq(u),b=kq(v),k=a<b?a+'|'+b:b+'|'+a;if(a==b||S.has(k))continue;S.add(k);o.push([[u[1],u[0]],[v[1],v[0]]])}return o}
 /* ---------- prepare (bbox, size bucket) ---------- */
 function prep(F){const B=[1e9,1e9,-1e9,-1e9];
  for(const f of F){let a=1e9,b=1e9,c=-1e9,d=-1e9;const ex=p=>{if(p[0]<a)a=p[0];if(p[0]>c)c=p[0];if(p[1]<b)b=p[1];if(p[1]>d)d=p[1]};
   f.polys.forEach(r=>r[0].forEach(ex));f.lines.forEach(l=>l.forEach(ex));f.pts.forEach(ex);
   f.bb=[a,b,c,d];f.cx=(a+c)/2;f.cy=(b+d)/2;f.w=Math.max((c-a)*Math.cos(f.cy*rad),d-b)*111320;
   f.k=f.polys.length?Math.min(19,Math.max(0,Math.floor(Math.log2(Math.max(f.w,1))))):20;
-  f.cc=CL(f);if(f.cc)f.lab=f.cc[2];B[0]=Math.min(B[0],a);B[1]=Math.min(B[1],b);B[2]=Math.max(B[2],c);B[3]=Math.max(B[3],d)}
+  f.cc=CL(f);if(f.cc)f.lab=f.cc==KIL&&f.name.includes('/')?'#fcf91e':f.cc[2];B[0]=Math.min(B[0],a);B[1]=Math.min(B[1],b);B[2]=Math.max(B[2],c);B[3]=Math.max(B[3],d)}
  return B}
 
 /* ---------- rendering with size-based level of detail (light on mobile) ---------- */
@@ -122,15 +130,15 @@ let cur=null;const HL=L.layerGroup().addTo(map),LL=r=>r.map(p=>[p[1],p[0]]);
 const mpp=()=>156543*Math.cos(map.getCenter().lat*rad)/2**map.getZoom(),vis=k=>k>=20||2**(k+1)>=5*mpp();
 function build(bk,k){const ly=[],rd=RDK(k);
  for(const f of bk.f){const o={renderer:rd,interactive:false,color:f.cc?f.cc[0]:f.line||dc(f),weight:f.cc?f.cc[1]:1.5,fill:false};
-  f.polys.forEach(p=>ly.push(L.polygon(p.map(LL),o)));
+  if(f.cc==KIL){const s=ue(f,cur.seen);s.length&&ly.push(L.polyline(s,o))}else f.polys.forEach(p=>ly.push(L.polygon(p.map(LL),o)));
   f.lines.forEach(l=>ly.push(L.polyline(LL(l),{...o,color:f.line||'#facc15',weight:3})));
   f.pts.forEach(p=>ly.push(L.circleMarker([p[1],p[0]],{renderer:rd,radius:7,color:'#fff',weight:2,fillColor:'#10b981',fillOpacity:1,interactive:false})))}
  bk.g=L.featureGroup(ly)}
 function lod(){if(!cur)return;for(const k in cur.bk){const b=cur.bk[k];if(vis(+k)){if(!b.g)build(b,+k);if(!map.hasLayer(b.g))b.g.addTo(map)}else if(b.g&&map.hasLayer(b.g))map.removeLayer(b.g)}}
 function clearCur(){if(cur)for(const k in cur.bk){const g=cur.bk[k].g;g&&map.removeLayer(g)}HL.clearLayers();map.closePopup();cur=null}
 function show(F,name){clearCur();if(!F.length)return say('Is file me koi feature nahi mila',3500);
- const bb=prep(F),bk={};for(const f of F)(bk[f.k]=bk[f.k]||{f:[]}).f.push(f);
- cur={F,bk,name,bb};$('#ft').onclick();lod();labels();say(name+': '+F.length+' features',2500)}
+ const bb=prep(F);geoCls(F);const bk={};for(const f of F)(bk[f.k]=bk[f.k]||{f:[]}).f.push(f);
+ cur={F,bk,name,bb,seen:new Set()};$('#ft').onclick();lod();labels();say(name+': '+F.length+' features',2500)}
 $('#ft').onclick=()=>{if(cur)map.fitBounds([[cur.bb[1],cur.bb[0]],[cur.bb[3],cur.bb[2]]],{padding:[20,20],maxZoom:18})};
 
 /* ---------- labels (single canvas, only what fits) ---------- */
