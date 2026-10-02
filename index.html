@@ -21,7 +21,7 @@ html,body{margin:0;height:100%;font:14px system-ui,-apple-system,"Segoe UI",Robo
 #mw{flex:1;position:relative;min-height:0}#map{position:absolute;inset:0;background:#222}
 #lab{position:absolute;left:0;top:0;z-index:450;pointer-events:none}
 #tools{position:absolute;z-index:800;left:10px;top:10px;display:flex;flex-direction:column;gap:6px}
-#tools button,#tools label{width:42px;height:42px;border:0;border-radius:10px;background:#fff;box-shadow:0 2px 8px #0005;font-size:19px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+#tools button,#tools label{width:42px;height:42px;border:0;border-radius:10px;background:#fff;box-shadow:0 2px 8px #0005;font-size:19px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation}
 #tools .on{background:var(--am)}#in{display:none}
 #pn{position:absolute;z-index:800;left:10px;right:10px;bottom:calc(14px + env(safe-area-inset-bottom));max-width:430px;background:var(--nv);color:#fff;border-radius:14px;padding:10px 12px;display:none;box-shadow:0 4px 16px #0008}
 #pn .big{font-size:24px;font-weight:800;color:var(--am)}#pn .lb{color:#9fb0d8;font-size:12px}
@@ -47,7 +47,7 @@ html,body{margin:0;height:100%;font:14px system-ui,-apple-system,"Segoe UI",Robo
   <div id="tools">
    <button id="md" title="Distance (feet)">📏</button>
    <button id="ma" title="Area (sq ft / marla / kanal)">⬚</button>
-   <button id="lc" title="Live GPS tracking">◎</button>
+   <button id="lc" title="Live GPS (dabayein = meri location, 1 sec dabaye rakhein = GPS band)">◎</button>
    <button id="bm" title="Change map">🗺</button>
    <button id="ft" title="Fit mouza">⤢</button>
    <label title="Open KML / KMZ / GeoJSON from phone">📂<input id="of" type="file" accept=".kml,.kmz,.geojson,.json" hidden></label>
@@ -238,18 +238,43 @@ function startCompass(){const D=window.DeviceOrientationEvent;if(!D)return;
 function stopCompass(){removeEventListener('deviceorientationabsolute',onOri,true);removeEventListener('deviceorientation',onOri,true);cmp=null;gh=null}
 const gbtn=()=>{const b=$('#lc');b.classList.toggle('on',gw!==null&&fol);b.classList.toggle('tk',gw!==null&&!fol)};
 function gstop(){stopCompass();if(gw!==null)navigator.geolocation.clearWatch(gw);gm&&map.removeLayer(gm);gc&&map.removeLayer(gc);wl&&wl.release&&wl.release().catch(()=>{});gw=gm=gc=wl=null;fol=false;gbtn()}
-function onFix(p){const c=p.coords,ll=[c.latitude,c.longitude],first=!gm;
+
+/* Har naya GPS fix aate hi blue dot us jagah move hota hai */
+function onFix(p){if(gw===null)return;const c=p.coords,ll=[c.latitude,c.longitude],first=!gm;
  if(first){gc=L.circle(ll,{radius:c.accuracy,weight:1,color:'#3b82f6',fillOpacity:.1,interactive:false}).addTo(map);
   gm=L.marker(ll,{icon:L.divIcon({className:'',html:'<div class="me"><div class="ro"><i></i><b></b></div></div>',iconSize:[22,22]}),interactive:false,keyboard:false,zIndexOffset:1000}).addTo(map);say('📍 GPS mil gaya (±'+Math.round(c.accuracy)+' m)',2000)}
  else{gm.setLatLng(ll);gc.setLatLng(ll);gc.setRadius(c.accuracy)}
  gh=c.heading;gs=c.speed||0;arrow();
  if(fol){if(first||map.getZoom()<17)map.setView(ll,Math.max(map.getZoom(),17));else map.panTo(ll,{animate:true,duration:.8,easeLinearity:1})}}
-$('#lc').onclick=()=>{
- if(gw!==null){if(!fol&&gm){fol=true;map.setView(gm.getLatLng(),Math.max(map.getZoom(),17));gbtn()}else{gstop();say('GPS band',1200)}return}
+
+/* GPS start: watchPosition lagatar chalta rahega, device move kare to dot move karega */
+function gstart(){
  if(!navigator.geolocation)return say('GPS support nahi',2500);
  say('GPS dhoond raha hai…');fol=true;startCompass();
- gw=navigator.geolocation.watchPosition(onFix,e=>{say(e.code==1?'❌ GPS permission block hai (browser settings me allow karein)':'GPS signal nahi mil raha…',3500);if(e.code==1)gstop()},{enableHighAccuracy:true,maximumAge:1000,timeout:30000});
- if(navigator.wakeLock)navigator.wakeLock.request('screen').then(l=>wl=l).catch(()=>{});gbtn()};
+ gw=navigator.geolocation.watchPosition(onFix,
+  e=>{if(e.code==1){say('❌ GPS permission block hai (browser settings me allow karein)',3500);gstop()}
+      else say('GPS signal nahi mil raha…',2500)},
+  {enableHighAccuracy:true,maximumAge:0,timeout:30000});
+ if(navigator.wakeLock)navigator.wakeLock.request('screen').then(l=>wl=l).catch(()=>{});
+ gbtn()}
+
+/* Button: GPS band nahi karta, sirf latest location dikhata hai */
+let lpT=0,lpDone=false;
+$('#lc').onclick=()=>{
+ if(lpDone){lpDone=false;return}              // long-press ke baad wala click ignore
+ if(gw===null){gstart();return}               // pehli baar: GPS chalu
+ fol=true;gbtn();                             // follow mode wapas on
+ if(gm){map.setView(gm.getLatLng(),Math.max(map.getZoom(),17));say('📍 Current location',1200)}
+ else say('GPS dhoond raha hai…');
+ // fresh location bhi maang lo taaki turant update ho
+ navigator.geolocation.getCurrentPosition(onFix,()=>{},{enableHighAccuracy:true,maximumAge:0,timeout:10000})};
+
+/* Long press (1 sec) = GPS band */
+const lcb=$('#lc');
+lcb.addEventListener('contextmenu',e=>e.preventDefault());
+lcb.addEventListener('pointerdown',()=>{clearTimeout(lpT);lpT=setTimeout(()=>{lpT=0;if(gw!==null){lpDone=true;gstop();say('GPS band',1200)}},1000)});
+['pointerup','pointerleave','pointercancel'].forEach(t=>lcb.addEventListener(t,()=>clearTimeout(lpT)));
+
 map.on('dragstart',()=>{if(fol){fol=false;gbtn()}});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&gw!==null&&navigator.wakeLock)navigator.wakeLock.request('screen').then(l=>wl=l).catch(()=>{})});
 
