@@ -13,3 +13,4 @@ Barthla = Barthla Syed Ahmed.geojson
 Goth Jungo = goth jungo.geojson
 Samdani = Samdani.geojson
 Sadiqabad = Sadiqabad City.geojson
+Testing = testing.geojson
