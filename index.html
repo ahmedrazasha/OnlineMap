@@ -106,12 +106,36 @@ function parseGJ(j){
  return out}
 
 /* ---------- fixed colour pattern for every mouza: killa green, muraba red, block blue ---------- */
-const CL=f=>{const n=f.name||'';return /^\s*block\b/i.test(n)?BLK:/^\s*murab{1,2}a\b/i.test(n)?MUR:/^\s*\d+(\s*\/\s*\d+)?\s*$/.test(n)?KIL:null};
-const KIL=['#7df527',1.3,'#2efcff'],MUR=['#f40b0b',2.2,'#f40b0b'],BLK=['#1e7afc',3,'#1e7afc'];
+/* naam me sirf wazeh "Block ..." ya "Muraba ..." ho to wahi; baqi size / naam se tay hota hai */
+const KIL=['#7df527',1.3,'#2efcff'],MUR=['#f40b0b',2.2,'#fcf91e'],BLK=['#1e7afc',3,'#1e7afc'];
+const CL=f=>{const n=f.name||'';return /^\s*block\b/i.test(n)?BLK:/^\s*murab{1,2}a\b/i.test(n)?MUR:null};
 /* file me naam/rang kuch bhi ho: grid jaisi file ho to size se killa/muraba/block pehchan lo */
-function geoCls(F){const P=F.filter(f=>f.polys.length&&f.w>0),ar=f=>(f.bb[2]-f.bb[0])*(f.bb[3]-f.bb[1]);if(P.length<12)return;
- const md=P.map(ar).sort((a,b)=>a-b)[P.length>>1];if(P.filter(f=>ar(f)>=md/2&&ar(f)<=md*2).length<P.length*.5)return;
- for(const f of P)if(!f.cc){const a=ar(f);f.cc=a<md*6?KIL:a<md*60?MUR:BLK;f.lab=f.cc==KIL&&f.name.includes('/')?'#fcf91e':f.cc[2]}}
+function geoCls(F){const P=F.filter(f=>f.polys.length&&f.w>0),ar=f=>(f.bb[2]-f.bb[0])*(f.bb[3]-f.bb[1]);
+ const md=P.length?P.map(ar).sort((a,b)=>a-b)[P.length>>1]:0;
+ const grid=P.length>=12&&md>0&&P.filter(f=>ar(f)>=md/2&&ar(f)<=md*2).length>=P.length*.5;
+ for(const f of F){
+  if(!f.cc&&grid&&f.polys.length){const a=ar(f);f.cc=a<md*6?KIL:a<md*60?MUR:BLK}
+  if(!f.cc&&/^\s*\d+(\s*\/\s*\d+)?\s*$/.test(f.name||''))f.cc=KIL;
+  if(f.cc&&!f.dn)f.lab=f.cc==KIL?(f.name.includes('/')?'#fcf91e':'#2efcff'):f.cc==MUR?'#fcf91e':f.cc[2]}}
+
+/* ---------- naam "Killa N (Muraba M, Block B)" ho to: label me sirf killa number; muraba (B/M) sab se chhote killa par; block ek dafa; muraba/block ki outline ---------- */
+const kb=p=>Math.round(p[0]*1e5)+','+Math.round(p[1]*1e5);
+function bedges(fs){const C=new Map;
+ for(const f of fs)for(const pg of f.polys)for(const r of pg)for(let i=0;i<r.length;i++){const u=r[i],v=r[(i+1)%r.length],a=kb(u),b=kb(v);if(a==b)continue;const k=a<b?a+'|'+b:b+'|'+a,e=C.get(k);if(e)e.n++;else C.set(k,{n:1,s:[[u[1],u[0]],[v[1],v[0]]]})}
+ return[...C.values()].filter(e=>e.n==1).map(e=>e.s)}
+function derive(F){const M={},B={},X=[],have=new Set;
+ for(const f of F){const m=/^\s*block\s*(\d+)/i.exec(f.name||'');if(m)have.add(m[1])}
+ for(const f of F){const n=f.name||'',k=/^\s*killa\s*(\d+)/i.exec(n);if(!k||!f.polys.length)continue;
+  const mu=/muraba\s*(\d+)/i.exec(n),bl=/block\s*(\d+)/i.exec(n);
+  f.kn=+k[1];f.dn=k[1];f.cc=KIL;f.lab='#2efcff';
+  if(mu&&bl){const key=bl[1]+'/'+mu[1];(M[key]=M[key]||[]).push(f)}
+  if(bl)(B[bl[1]]=B[bl[1]]||[]).push(f)}
+ for(const k in M){const f=M[k].reduce((a,b)=>b.kn<a.kn?b:a);f.dn=k;f.lab='#fcf91e'}
+ for(const b in B){if(have.has(b))continue;let a=1e9,c=1e9,e=-1e9,d=-1e9;
+  for(const f of B[b]){a=Math.min(a,f.bb[0]);c=Math.min(c,f.bb[1]);e=Math.max(e,f.bb[2]);d=Math.max(d,f.bb[3])}
+  const cy=(c+d)/2;X.push({name:'Block '+b,dn:'Block '+b,v:1,polys:[],lines:[],pts:[],cx:(a+e)/2,cy,w:Math.max((e-a)*Math.cos(cy*rad),d-c)*111320,lab:'#1e7afc'})}
+ return{X,M,B}}
+
 /* har edge sirf aik dafa draw ho (shared edge double na bane) */
 const kq=p=>Math.round(p[0]*1e6)+','+Math.round(p[1]*1e6);
 function ue(f,S){const o=[];for(const pg of f.polys)for(const r of pg)for(let i=0;i<r.length;i++){const u=r[i],v=r[(i+1)%r.length],a=kq(u),b=kq(v),k=a<b?a+'|'+b:b+'|'+a;if(a==b||S.has(k))continue;S.add(k);o.push([[u[1],u[0]],[v[1],v[0]]])}return o}
@@ -121,7 +145,7 @@ function prep(F){const B=[1e9,1e9,-1e9,-1e9];
   f.polys.forEach(r=>r[0].forEach(ex));f.lines.forEach(l=>l.forEach(ex));f.pts.forEach(ex);
   f.bb=[a,b,c,d];f.cx=(a+c)/2;f.cy=(b+d)/2;f.w=Math.max((c-a)*Math.cos(f.cy*rad),d-b)*111320;
   f.k=f.polys.length?Math.min(19,Math.max(0,Math.floor(Math.log2(Math.max(f.w,1))))):20;
-  f.cc=CL(f);if(f.cc)f.lab=f.cc==KIL&&f.name.includes('/')?'#fcf91e':f.cc[2];B[0]=Math.min(B[0],a);B[1]=Math.min(B[1],b);B[2]=Math.max(B[2],c);B[3]=Math.max(B[3],d)}
+  f.cc=CL(f);B[0]=Math.min(B[0],a);B[1]=Math.min(B[1],b);B[2]=Math.max(B[2],c);B[3]=Math.max(B[3],d)}
  return B}
 
 /* ---------- rendering with size-based level of detail (light on mobile) ---------- */
@@ -135,10 +159,16 @@ function build(bk,k){const ly=[],rd=RDK(k);
   f.pts.forEach(p=>ly.push(L.circleMarker([p[1],p[0]],{renderer:rd,radius:7,color:'#fff',weight:2,fillColor:'#10b981',fillOpacity:1,interactive:false})))}
  bk.g=L.featureGroup(ly)}
 function lod(){if(!cur)return;for(const k in cur.bk){const b=cur.bk[k];if(vis(+k)){if(!b.g)build(b,+k);if(!map.hasLayer(b.g))b.g.addTo(map)}else if(b.g&&map.hasLayer(b.g))map.removeLayer(b.g)}}
-function clearCur(){if(cur)for(const k in cur.bk){const g=cur.bk[k].g;g&&map.removeLayer(g)}HL.clearLayers();map.closePopup();cur=null}
+function clearCur(){if(cur){for(const k in cur.bk){const g=cur.bk[k].g;g&&map.removeLayer(g)}cur.D&&map.removeLayer(cur.D)}HL.clearLayers();map.closePopup();cur=null}
 function show(F,name){clearCur();if(!F.length)return say('Is file me koi feature nahi mila',3500);
- const bb=prep(F);geoCls(F);const bk={};for(const f of F)(bk[f.k]=bk[f.k]||{f:[]}).f.push(f);
- cur={F,bk,name,bb,seen:new Set()};$('#ft').onclick();lod();labels();say(name+': '+F.length+' features',2500)}
+ const bb=prep(F),dv=derive(F);geoCls(F);const bk={};for(const f of F)(bk[f.k]=bk[f.k]||{f:[]}).f.push(f);
+ cur={F,X:dv.X,bk,name,bb,seen:new Set()};
+ /* derived muraba (surkh) aur block (neeli) outline: sirf bahar wali edges */
+ const D=[],rm=RDK(18),rb=RDK(19);
+ for(const k in dv.M){const s=bedges(dv.M[k]);s.length&&D.push(L.polyline(s,{renderer:rm,interactive:false,color:MUR[0],weight:MUR[1],fill:false}))}
+ for(const b in dv.B){const s=bedges(dv.B[b]);s.length&&D.push(L.polyline(s,{renderer:rb,interactive:false,color:BLK[0],weight:BLK[1],fill:false}))}
+ cur.D=L.layerGroup(D).addTo(map);
+ $('#ft').onclick();lod();labels();say(name+': '+F.length+' features',2500)}
 $('#ft').onclick=()=>{if(cur)map.fitBounds([[cur.bb[1],cur.bb[0]],[cur.bb[3],cur.bb[2]]],{padding:[20,20],maxZoom:18})};
 
 /* ---------- labels (single canvas, only what fits) ---------- */
@@ -148,9 +178,9 @@ function labels(){cancelAnimationFrame(raf);raf=requestAnimationFrame(()=>{
  const s=map.getSize(),d=devicePixelRatio||1;lc.width=s.x*d;lc.height=s.y*d;lc.style.width=s.x+'px';lc.style.height=s.y+'px';
  const g=lc.getContext('2d');g.scale(d,d);if(!cur)return;
  const b=map.getBounds().pad(.05),m=mpp();g.textAlign='center';g.textBaseline='middle';g.lineJoin='round';g.lineWidth=3;g.strokeStyle='rgba(0,0,0,.85)';let n=0;
- for(const f of cur.F){if(!f.name||NOLAB.test(f.name))continue;const pt=!f.polys.length,px=f.w/m;if((!pt&&px<36)||!b.contains([f.cy,f.cx]))continue;
+ for(const f of cur.F.concat(cur.X)){const t=f.dn||f.name;if(!t||NOLAB.test(f.name))continue;const pt=!f.polys.length&&!f.v,px=f.w/m;if((!pt&&px<36)||!b.contains([f.cy,f.cx]))continue;
   const p=map.latLngToContainerPoint([f.cy,f.cx]);g.font='700 '+(px<90?12:px<300?15:19)+'px system-ui,sans-serif';g.fillStyle=f.lab||'#2efcff';
-  g.strokeText(f.name,p.x,p.y);g.fillText(f.name,p.x,p.y);if(++n>800)break}})}
+  g.strokeText(t,p.x,p.y);g.fillText(t,p.x,p.y);if(++n>800)break}})}
 map.on('move zoom resize moveend',labels);
 map.on('zoomstart',()=>lc.style.opacity=0);map.on('zoomend',()=>{lc.style.opacity=1;lod();labels()});
 
@@ -215,7 +245,7 @@ function pin(ll){HL.clearLayers();L.circleMarker(ll,{radius:8,color:'#fff',weigh
 function go(){const q=$('#q').value.trim();if(!q)return;const m=q.match(/^(-?\d+(?:\.\d+)?)[\s,]+(-?\d+(?:\.\d+)?)$/);
  if(m){let a=+m[1],b=+m[2];if(Math.abs(a)>50&&Math.abs(b)<50)[a,b]=[b,a];pin([a,b]);map.setView([a,b],18);return}
  if(!cur)return say('Pehle mouza select karein',2500);const s=q.toLowerCase();
- let r=cur.F.filter(f=>f.name.toLowerCase()==s);if(!r.length)r=cur.F.filter(f=>f.name.toLowerCase().includes(s));
+ let r=cur.F.filter(f=>f.name.toLowerCase()==s||(f.dn&&String(f.dn).toLowerCase()==s));if(!r.length)r=cur.F.filter(f=>f.name.toLowerCase().includes(s));
  if(!r.length)return say('Nahi mila: '+q,2500);
  if(q!=lq){si=0;lq=q}else si=(si+1)%r.length;
  const f=r[si];hl(f);map.fitBounds([[f.bb[1],f.bb[0]],[f.bb[3],f.bb[2]]],{maxZoom:19,padding:[40,40]});say(f.name+'  ('+(si+1)+'/'+r.length+')',2500)}
@@ -256,20 +286,20 @@ function gstop(){stopCompass();if(gw!==null)navigator.geolocation.clearWatch(gw)
 function onFix(p){if(gw===null)return;const c=p.coords;
  /* 25 meter se zyada accuracy ignore */
  if(c.accuracy>ACCURACY_THRESHOLD){if(!gm)say('GPS improve ho raha hai (accuracy zyada hai)…');return}
- 
+
  const ll=[c.latitude,c.longitude],first=!gm;
- 
+
  /* 5 meter ka move na ho to dot move mat karo (noise filter) */
  if(lastLoc&&!first){const d=Math.sqrt(Math.pow(ll[0]-lastLoc[0],2)+Math.pow(ll[1]-lastLoc[1],2))*111320;if(d<MIN_DISTANCE)return}
- 
+
  lastLoc=ll;
- 
+
  if(first){gc=L.circle(ll,{radius:c.accuracy,weight:1,color:'#3b82f6',fillOpacity:.1,interactive:false}).addTo(map);
   gm=L.marker(ll,{icon:L.divIcon({className:'',html:'<div class="me"><div class="ro"><i></i><b></b></div></div>',iconSize:[22,22]}),interactive:false,keyboard:false,zIndexOffset:1000}).addTo(map);say('📍 GPS mil gaya (±'+Math.round(c.accuracy)+' m)',2000)}
  else{gm.setLatLng(ll);gc.setLatLng(ll);gc.setRadius(c.accuracy)}
- 
+
  gh=c.heading;gs=c.speed||0;arrow();
- 
+
  if(fol){if(first||map.getZoom()<17)map.setView(ll,Math.max(map.getZoom(),17));else map.panTo(ll,{animate:true,duration:.8,easeLinearity:1})}}
 
 /* GPS start: watchPosition lagatar chalta rahega */
