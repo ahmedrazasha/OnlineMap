@@ -130,7 +130,7 @@ function derive(F){const M={},B={},X=[],have=new Set;
   f.kn=+k[1];f.dn=k[1];f.cc=KIL;f.lab='#2efcff';
   if(mu&&bl){const key=bl[1]+'/'+mu[1];(M[key]=M[key]||[]).push(f)}
   if(bl)(B[bl[1]]=B[bl[1]]||[]).push(f)}
- for(const k in M){const f=M[k].reduce((a,b)=>b.kn<a.kn?b:a);f.dn=k;f.lab='#fcf91e'}
+ for(const k in M){const f=M[k].reduce((a,b)=>b.kn<a.kn?b:a);f.dn=k;f.kd=String(f.kn);f.lab='#fcf91e'}
  for(const b in B){if(have.has(b))continue;let a=1e9,c=1e9,e=-1e9,d=-1e9;
   for(const f of B[b]){a=Math.min(a,f.bb[0]);c=Math.min(c,f.bb[1]);e=Math.max(e,f.bb[2]);d=Math.max(d,f.bb[3])}
   const cy=(c+d)/2;X.push({name:'Block '+b,dn:'Block '+b,v:1,polys:[],lines:[],pts:[],cx:(a+e)/2,cy,w:Math.max((e-a)*Math.cos(cy*rad),d-c)*111320,lab:'#1e7afc'})}
@@ -179,8 +179,10 @@ function labels(){cancelAnimationFrame(raf);raf=requestAnimationFrame(()=>{
  const g=lc.getContext('2d');g.scale(d,d);if(!cur)return;
  const b=map.getBounds().pad(.05),m=mpp();g.textAlign='center';g.textBaseline='middle';g.lineJoin='round';g.lineWidth=3;g.strokeStyle='rgba(0,0,0,.85)';let n=0;
  for(const f of cur.F.concat(cur.X)){const t=f.dn||f.name;if(!t||NOLAB.test(f.name))continue;const pt=!f.polys.length&&!f.v,px=f.w/m;if((!pt&&px<36)||!b.contains([f.cy,f.cx]))continue;
-  const p=map.latLngToContainerPoint([f.cy,f.cx]);g.font='700 '+(px<90?12:px<300?15:19)+'px system-ui,sans-serif';g.fillStyle=f.lab||'#2efcff';
-  g.strokeText(t,p.x,p.y);g.fillText(t,p.x,p.y);if(++n>800)break}})}
+  const p=map.latLngToContainerPoint([f.cy,f.cx]);const fs=px<90?12:px<300?15:19;g.font='700 '+fs+'px system-ui,sans-serif';g.fillStyle=f.lab||'#2efcff';
+  if(f.kd){const y1=p.y-fs*.65,y2=p.y+fs*.75;g.strokeText(t,p.x,y1);g.fillText(t,p.x,y1);g.fillStyle='#2efcff';g.strokeText(f.kd,p.x,y2);g.fillText(f.kd,p.x,y2)}
+  else{g.strokeText(t,p.x,p.y);g.fillText(t,p.x,p.y)}
+  if(++n>800)break}})}
 map.on('move zoom resize moveend',labels);
 map.on('zoomstart',()=>lc.style.opacity=0);map.on('zoomend',()=>{lc.style.opacity=1;lod();labels()});
 
