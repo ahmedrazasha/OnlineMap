@@ -71,7 +71,8 @@ const RDK=k=>{const n='k'+k;if(!map.getPane(n))map.createPane(n).style.zIndex=40
 
 /* ---------- base maps: Esri Hybrid is the default; provider updates appear automatically ---------- */
 // Use a new preference key so an older saved Google-map selection does not override the new default.
-let bi=Number(localStorage.gb_esri_hybrid_v1||0);
+let bi=0;
+localStorage.gb_esri_hybrid_v1='0';
 const esriImagery=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{
  maxZoom:21,maxNativeZoom:19,keepBuffer:2,updateWhenIdle:false,updateWhenZooming:false,attribution:'Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community'
 });
@@ -81,7 +82,7 @@ const esriLabels=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/servic
 const esriHybrid=L.layerGroup([esriImagery,esriLabels]);
 const BM=[
  ['Esri Hybrid',esriHybrid],
- ['Google Satellite',L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',{subdomains:'0123',maxZoom:21,maxNativeZoom:20,keepBuffer:2,attribution:'© Google'})],
+ ['Google Satellite',L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',{subdomains:'0123',maxZoom:21,maxNativeZoom:18,keepBuffer:2,attribution:'© Google'})],
  ['Esri Satellite',L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:21,maxNativeZoom:19,keepBuffer:2,attribution:'© Esri'})],
  ['Streets',L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:21,maxNativeZoom:19,keepBuffer:2,attribution:'© OpenStreetMap'})]
 ];
