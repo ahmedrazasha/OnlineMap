@@ -19,4 +19,5 @@ Testing = testing.geojson
 154p = 154p.geojson
 155p = 155p.geojson
 157P = 157P.geojson
+Barthla = barthla.geojson
 bontra = bontra.geojson
