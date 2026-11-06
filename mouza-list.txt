@@ -16,6 +16,7 @@ Sadiqabad = Sadiqabad City.geojson
 Testing = testing.geojson
 150P = 150p.geojson
 153p = 153p.geojson
+154p = 154p.geojson
 155p = 155p.geojson
 157P = 157P.geojson
 bontra = bontra.geojson
